@@ -1,117 +1,88 @@
-# Packages e Configurações
-require(jpeg)
-require(wavethresh)
-require(cluster)
-require(tidyverse)
+# Packages
+require(mixer)
+require(network)
+require(mclust)
+require(RColorBrewer)
+require(ggplot2)
 
-# Importando imagem
-image <- readJPEG('dados/img_reduzido/242.jpg') # Imagem
-image_df <- tibble(R=(image[,,1]), G=(image[,,2]), B=(image[,,3])) # Imagem data.frame
+set.seed(28)
 
-## plot da imagem
-par(mar=c(1,1,1,1))
-plot(c(0,1), c(0,1), type='n', axes=FALSE, xlab='', ylab='', main='', mai=c(0,0,0,0))
-rasterImage(image, 0,0,1,1, mai=c(0,0,0,0))
+# Importação
+db <- read.csv('dados/Pilotos F1 - 2024.csv', row.names=1)
+labels <- row.names(db)  # Nomes
 
-# Análise
-## K-means
-km <- kmeans(tt[, c('R', 'G', 'B')], centers=100)
+# Colocando os dados em um formato mais interessante
+db_rede <- as.matrix(db[-(1:5)])
+colnames(db_rede) <- labels
 
-image_final <- array(c(as.vector(km$centers[km$cluster,'R']),  # R
-                       as.vector(km$centers[km$cluster,'G']),  # G
-                       as.vector(km$centers[km$cluster,'B'])), # B
-                     dim=c(256,384,3))
-
-# Plotando imagem final
-plot(c(0,1), c(0,1), type='n', axes=FALSE, xlab='', ylab='', main='')
-rasterImage(image_final, 0,0,1,1)
-
-# Gravando imagem final
-writeJPEG(im_final, 'imagem_final.jpeg')
+# db_network <- network(db_rede)
+db_network <- network(db_rede, vertex.attr=db[1:5],
+                      vertex.attrnames=colnames(db)[1:5])
 
 
-#------- Testes -------#
-data(teddy)
-t <- imwd(teddy, filter.number=10)
-twr <- imwr(t)
-greycol <- grey((0:255)/255)
-myt <- function(x) 20+sqrt(x)
-plot(t$w8L1, col=greycol, transform=TRUE, tfunction=myt)
-par(new=T)
-plot(t$w8L2, col=greycol, transform=TRUE, tfunction=myt)
-par(new=T)
-plot(t$w8L3, col=greycol, transform=TRUE, tfunction=myt)
-par(new=T)
-plot(t$w8L4, col=greycol, transform=TRUE, tfunction=myt)
+# Gráficos
+par(oma=c(2.2,1,1,1))
+heatmap(db_rede, Rowv=NA, Colv=NA, scale='none')
+
+par(oma=c(0,0,0,0), mar=c(1,1,1,1))
+layout <- network.layout.fruchtermanreingold(db_network, layout.par=NULL)
+plot(db_network, label=labels, mode='fruchtermanreingold', coord=layout,
+     edge.col='gray', label.cex=0.75)
+
+# Ajustando modelo
+fit <- mixer(db_rede, qmin=1, qmax=8, method='variational')
+mod <- getModel(fit)
+mod$q  ## 4: quantidade de clusters
+
+# Gráfico dos clusters
+z <- t(mod$Taus)
+color <- (2:5)[mclust::map(z)]
+
+par(oma=c(0,0,0,0), mar=c(2,2,2,2))
+plot(db_network, label=labels, coord=layout, vertex.col=color, xlim=c(2,1),
+     edge.col='gray', label.cex=0.75)
+legend('right', col=2:5, pch=20, legend=paste('Cluster', 1:4), bty='n',
+       cex=0.75, y.intersp=2, inset=c(0.1,0.2))
 
 
-
-# tt %>% 
-#   mutate(kColors=rgb(km$centers[km$cluster,])) %>% 
-#   ggplot(aes(x=X, y=Y, col=I(kColors))) +
-#   geom_point(show.legend=F) +
-#   theme_minimal()
-
-# im.m <- tt %>% mutate(R=as.vector(km$centers[km$cluster,'R']),
-#                       G=as.vector(km$centers[km$cluster,'G']),
-#                       B=as.vector(km$centers[km$cluster,'B']))
+# Estimativa de Theta e tau
+round(mod$alphas, 2)  # \hat\tau
+round(mod$Pis, 2)  # \hat\Theta
 
 
+# Tabelas
+tab <- data.frame('c'=as.factor(mclust::map(z)), 
+                  'titulos'=get.vertex.attribute(db_network , 'Titulos'),
+                  'corridas'=get.vertex.attribute(db_network , 'Corridas'),
+                  'idade'=get.vertex.attribute(db_network , 'Idade'),
+                  'vitorias'=get.vertex.attribute(db_network , 'Vitorias'))
+
+colMeans((tab[tab$c==1,])[-1])
+# titulos   corridas      idade   vitorias 
+# 0.0000000 62.8333333 24.5000000  0.3333333 
+colMeans((tab[tab$c==2,])[-1])
+# titulos corridas    idade vitorias 
+# 0.6    179.0     27.2     14.0 
+colMeans((tab[tab$c==3,])[-1])
+# titulos   corridas      idade   vitorias 
+# 0.000000 165.857143  29.428571   2.428571 
+colMeans((tab[tab$c==4,])[-1])
+# titulos corridas    idade vitorias 
+# 4.5    356.0     40.5     67.5 
 
 
+titulos <- get.vertex.attribute(db_network , 'Titulos')
+ti <- table(map(z), titulos)
 
-require(opencv)
-# Silly example
-mona <- ocv_read('https://jeroen.github.io/images/monalisa.jpg')
-mona <- ocv_resize(mona, width = 320, height = 477)
+corridas <- get.vertex.attribute(db_network , 'Corridas')
+co <- apply(table(map(z), corridas), 1, mean)
 
-# Edge detection
-ocv_edges(t)
-ocv_markers(t)
-a <- ocv_face(mona)
+par(oma=c(1,1,1,1), mar=c(2,4,4,2))
+boxplot(idade ~ c, col=2:5, pch=19, data=tab)
+legend('right', col=2:5, pch=20, legend=paste('Cluster', 1:4), bty='n',
+       cex=0.75, y.intersp=2)
 
-# Rectangular area
-ocv_rectangle(mona, x = 400, y = 300, height = 300, width = 350)
-ocv_rectangle(mona, x = 0, y = 100, height = 200)
-ocv_rectangle(mona, x = 500, y = 0, width = 75)
-
-
-img <- ocv_resize(mona, width = 320, height = 477)
-pts <- list(x = c(184, 172, 146, 114, 90, 76, 92, 163, 258),
-            y = c(72, 68, 70, 90, 110, 398, 412, 385, 210))
-ocv_polygon(img, pts)
-ocv_polygon(img, pts, crop = TRUE)
-ocv_polygon(img, pts, convex = TRUE, crop = TRUE)
-
-# Bounding box based on points
-ocv_bbox(img, pts)
-# Bounding box of non-zero pixel area
-area <- ocv_polygon(img, pts, color = 0, crop = FALSE)
-area
-area <- ocv_bbox(area)
-area
-
-
-
-
-
-
-eigenface.candidates <- grep('y', dir(), value=TRUE)
-
-
-i1 <- readJPEG(eigenface.candidates[1])
-# Vou roubar a estrutura para não criar objeto novo
-AverageFace <- subject01.normal.pgm
-AverageFace@grey <- matrix(0, nrow = d[1], ncol = d[2])
-n <- length(eigenface.candidates)
-for(j in seq_along(eigenface.candidates)){
-  AverageFace@grey <- AverageFace@grey + `@`(get(eigenface.candidates[j]), "grey")/n
-}
-
-
-
-
-
+# inset=c(-0.03,0)
 
 
 
