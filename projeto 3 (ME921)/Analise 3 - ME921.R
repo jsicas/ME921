@@ -71,18 +71,16 @@ colMeans((tab[tab$c==4,])[-1])
 # 4.5    356.0     40.5     67.5 
 
 
-titulos <- get.vertex.attribute(db_network , 'Titulos')
-ti <- table(map(z), titulos)
 
-corridas <- get.vertex.attribute(db_network , 'Corridas')
-co <- apply(table(map(z), corridas), 1, mean)
-
-par(oma=c(1,1,1,1), mar=c(2,4,4,2))
-boxplot(idade ~ c, col=2:5, pch=19, data=tab)
-legend('right', col=2:5, pch=20, legend=paste('Cluster', 1:4), bty='n',
-       cex=0.75, y.intersp=2)
-
-# inset=c(-0.03,0)
-
+# Análise de perfil
+cbind(db[2:5]) %>% scale() %>% 
+  as.data.frame() %>% 
+  mutate('cluster'=factor(mclust::map(z), labels=c('1', '2', '3', '4'))) %>% 
+  pivot_longer(-cluster, names_to='Atributo', values_to='valor') %>% 
+  ggplot(aes(x=Atributo, y=valor, fill=cluster)) +
+  geom_boxplot() +
+  coord_flip() +
+  labs() +
+  theme_bw()
 
 
